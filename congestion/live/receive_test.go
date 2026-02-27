@@ -571,9 +571,6 @@ func TestReorderToleranceIncrease(t *testing.T) {
 		nakCalls++
 	}, nil)
 
-	// Enable reorder support (simulates REXMIT handshake)
-	recv.SetReorderSupport(true)
-
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
 	// Send packets 0-4 in order
@@ -609,7 +606,6 @@ func TestReorderToleranceIncrease(t *testing.T) {
 
 func TestReorderToleranceIncreaseAboveCurrent(t *testing.T) {
 	recv := mockLiveRecvWithReorder(20, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -631,7 +627,6 @@ func TestReorderToleranceIncreaseAboveCurrent(t *testing.T) {
 	// Tolerance should increase from initial 20 to... wait, 15 < 20, so no increase
 	// Let's test with a smaller initial tolerance
 	recv2 := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv2.SetReorderSupport(true)
 
 	for i := 0; i < 5; i++ {
 		p := packet.NewPacket(addr)
@@ -659,7 +654,6 @@ func TestReorderToleranceIncreaseAboveCurrent(t *testing.T) {
 
 func TestReorderToleranceDecayOrdered(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Manually set tolerance to 5 for testing decay
 	recv.reorderTolerance = 5
@@ -680,7 +674,6 @@ func TestReorderToleranceDecayOrdered(t *testing.T) {
 
 func TestReorderToleranceDecayEarly(t *testing.T) {
 	recv := mockLiveRecvWithReorder(20, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Set tolerance to 5 (below max so seqdiff won't exceed it for nearby packets)
 	recv.reorderTolerance = 5
@@ -754,7 +747,6 @@ func TestReorderToleranceDecayEarly(t *testing.T) {
 
 func TestReorderToleranceNoDecayLowTTL(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 	recv.reorderTolerance = 2
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
@@ -801,7 +793,6 @@ func TestFreshLossTTLExpiry(t *testing.T) {
 			nakSeqs = append(nakSeqs, sn.Val())
 		}
 	}, nil)
-	recv.SetReorderSupport(true)
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -837,13 +828,13 @@ func TestFreshLossTTLExpiry(t *testing.T) {
 
 func TestNoReorderSupportImmediateNAK(t *testing.T) {
 	nakSeqs := []uint32{}
-	recv := mockLiveRecvWithReorder(10, nil, func(list []circular.Number) {
+	recv := mockLiveRecvWithReorder(0, nil, func(list []circular.Number) {
 		for _, sn := range list {
 			nakSeqs = append(nakSeqs, sn.Val())
 		}
 	}, nil)
 
-	// Do NOT enable reorder support (simulates peer without REXMIT)
+	// Max reorder tolerance is zero, so adaptive reorder is disabled.
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -867,7 +858,6 @@ func TestNoReorderSupportImmediateNAK(t *testing.T) {
 
 func TestFreshLossRemoveOneSplit(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Manually add a freshLoss entry
 	recv.freshLoss = []freshLossEntry{
@@ -890,7 +880,6 @@ func TestFreshLossRemoveOneSplit(t *testing.T) {
 
 func TestFreshLossRemoveOneStripped(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Remove from beginning (STRIPPED)
 	recv.freshLoss = []freshLossEntry{
@@ -915,7 +904,6 @@ func TestFreshLossRemoveOneStripped(t *testing.T) {
 
 func TestFreshLossRemoveOneDelete(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Single-element range (DELETE)
 	recv.freshLoss = []freshLossEntry{
@@ -933,7 +921,6 @@ func TestFreshLossRemoveOneDelete(t *testing.T) {
 
 func TestFreshLossRevoke(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	recv.freshLoss = []freshLossEntry{
 		{seqLo: circular.New(5, packet.MAX_SEQUENCENUMBER), seqHi: circular.New(10, packet.MAX_SEQUENCENUMBER), ttl: 5},
@@ -1007,7 +994,6 @@ func TestFreshLossRevoke(t *testing.T) {
 
 func TestPeriodicNAKSkipsFreshLoss(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -1034,7 +1020,6 @@ func TestPeriodicNAKSkipsFreshLoss(t *testing.T) {
 
 func TestReorderToleranceStatsExposure(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	require.Equal(t, 10, recv.ReorderTolerance())
 
@@ -1048,7 +1033,6 @@ func TestFreshLossOverflow(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, func(list []circular.Number) {
 		nakCalls++
 	}, nil)
-	recv.SetReorderSupport(true)
 
 	// Manually fill freshLoss to capacity
 	for i := 0; i < 1000; i++ {
@@ -1075,33 +1059,11 @@ func TestFreshLossOverflow(t *testing.T) {
 	require.Equal(t, 1000, len(recv.freshLoss), "should maintain max 1000 entries")
 }
 
-func TestSetReorderSupportDisable(t *testing.T) {
-	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
-
-	recv.reorderTolerance = 5
-	recv.consecOrderedDelivery = 10
-	recv.consecEarlyDelivery = 3
-	recv.freshLoss = []freshLossEntry{
-		{seqLo: circular.New(5, packet.MAX_SEQUENCENUMBER), seqHi: circular.New(10, packet.MAX_SEQUENCENUMBER), ttl: 3},
-	}
-
-	recv.SetReorderSupport(false)
-
-	require.Equal(t, 0, recv.reorderTolerance)
-	require.Equal(t, 0, recv.consecOrderedDelivery)
-	require.Equal(t, 0, recv.consecEarlyDelivery)
-	require.Nil(t, recv.freshLoss)
-	require.Equal(t, 0, recv.traceReorderDistance)
-	require.Equal(t, false, recv.reorderSupport)
-}
-
 func TestTLPKTDROPRevokesFreshLoss(t *testing.T) {
 	nakCalls := 0
 	recv := mockLiveRecvWithReorder(10, nil, func(list []circular.Number) {
 		nakCalls++
 	}, nil)
-	recv.SetReorderSupport(true)
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -1142,7 +1104,6 @@ func TestTLPKTDROPRevokesFreshLoss(t *testing.T) {
 
 func TestOrderedDeliveryCounterReset(t *testing.T) {
 	recv := mockLiveRecvWithReorder(10, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
@@ -1175,7 +1136,6 @@ func TestOrderedDeliveryCounterReset(t *testing.T) {
 
 func TestTraceReorderDistanceIsMax(t *testing.T) {
 	recv := mockLiveRecvWithReorder(20, nil, nil, nil)
-	recv.SetReorderSupport(true)
 
 	// Manually set tolerance and distance
 	recv.reorderTolerance = 10
@@ -1198,7 +1158,6 @@ func TestTraceReorderDistanceIsMax(t *testing.T) {
 
 func TestTraceReorderDistanceIncrease(t *testing.T) {
 	recv := mockLiveRecvWithReorder(20, nil, nil, nil)
-	recv.SetReorderSupport(true)
 	recv.reorderTolerance = 5
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
